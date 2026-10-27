@@ -127,8 +127,8 @@ before commissioning consideration; none has been flashed.
 The LLM profile additionally enables `LLM_MACHINE_STATE`, advertised by M115 as
 `Cap:LLM_MACHINE_STATE:1`. Other profiles leave it disabled. After session binding,
 `M876 V1 I Q<request>` emits the existing prompt receipt followed by one
-`//llmstate:v1` line with the same request and bound session. The state line is
-265 ASCII bytes before LF. Unbound inspection, binding, responding, malformed
+`//llmstate:v2` line with the same request and bound session. The state line is
+299 ASCII bytes before LF. Unbound inspection, binding, responding, malformed
 commands and exhausted state sequence produce no state line. Inspecting again
 samples again, even when the inspect request number is repeated; reads do not
 repeat a machine action. The host's journal still deduplicates its tool requests.
@@ -136,7 +136,7 @@ repeat a machine action. The host's journal still deduplicates its tool requests
 Fields, in canonical order:
 
 ```
-//llmstate:v1 Q<8> T<32> N<8> U<8> F<2> H<2> K<2> E<2> B<2> R<2> A<2> P<32> O<24> D<24> V<72>
+//llmstate:v2 Q<8> T<32> N<8> U<8> F<2> H<2> K<2> E<2> B<2> R<2> A<2> P<32> O<24> D<24> V<72> I<24> C<2> J<2>
 ```
 
 All widths are lowercase hexadecimal digits. Q is request, T is session, N is a
@@ -149,6 +149,22 @@ D three home offsets. V contains unit factor, feedrate mm/s, feed/flow percentag
 fan PWM, hotend actual/target, bed actual/target. Each float is its binary32 bit
 pattern written as eight hex digits, not an endian-dependent byte dump. Unknown
 versions, reserved flag bits or nonfinite values must not authorize host actions.
+
+Version 2 adds I: three uint32 millisecond values (previous_move_ms,
+stepper_inactive_time and max_inactive_time), C: XYZE DISABLE_IDLE axis mask,
+and J: bit zero for the raw stepper timeout predicate, bit one for the maximum
+inactivity predicate, both evaluated at U. With no idle axes, the absent stepper
+interval is encoded zero and its predicate is false. The host can distinguish
+unsupported from a supported zero interval using C. A supported zero stepper
+interval has a true raw predicate; MarlinCore separately checks the nonzero
+interval before shutdown. M85 zero disables its maximum-inactivity predicate.
+The production three-argument ELAPSED comparison uses unsigned uint32 U-origin
+subtraction, including wrap; the report does not count wraps or infer wall time.
+No host countdown or actual motor-shutdown guarantee follows. Planner activity,
+pause/SD state and no-sleep policy additionally affect timer reset/shutdown;
+those full runtime-policy inputs remain outside this report. V1 reports lack
+this coverage and must remain explicitly incomplete on the host. The M876
+command protocol remains V1; only the separate state schema changes to V2.
 
 The scalar state is copied in one short critical section, then serialized with
 interrupts restored. There is no planner synchronization, idle recursion, command
@@ -166,6 +182,7 @@ unknown; an old observation never establishes current readiness.
 
 Run `python3 buildroot/tests/llm_machine_state_native.py` for the actual getter
 and serializer compiled against hardware stubs. It runs eleven existing prompt
-cases, five state-wire cases and four getter configurations. Those checks and
+cases, five state-wire cases and eight getter configurations including idle-axis support on/off, timer boundaries,
+zero intervals, uint32 wrap and values above the signed half-range. Those checks and
 an F401 cross-build do not qualify a physical board, display, serial driver,
 recovery procedure, motion or heater behavior. No test hook is added to firmware.

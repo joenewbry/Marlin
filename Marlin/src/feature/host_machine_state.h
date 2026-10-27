@@ -11,6 +11,10 @@ struct HostMachineState {
   // Unit factor, feedrate mm/s, feed/flow %, fan PWM, nozzle actual/target,
   // bed actual/target. Values are controller variables, not measurements.
   float values[9];
+  // Raw uint32 millisecond counters: activity origin, M84 interval, M85 interval.
+  // Predicate flags describe sampled controller logic, never actual shutdown.
+  uint32_t inactivity[3];
+  uint8_t idle_axes, timeout_flags;
 };
 
 HostMachineState host_machine_state_snapshot();
