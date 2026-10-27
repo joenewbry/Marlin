@@ -90,3 +90,34 @@ passes six synthetic-clock scenarios and three actual typedef checks. These
 checks cover arming, expiry, wrap and handoff thresholds; full manager fault
 shutdown and physical heaters have not been qualified on this source baseline.
 The earlier Creality-native thermal results do not transfer automatically.
+
+## Complete the runtime handoff
+
+The prior layer copied the watch template and threshold typedefs, but v040's
+runaway state machine still waited for the exact target. An actual-source
+runtime harness reproduced six failures: at/above the handoff threshold the
+watch disarmed, while stable protection never started. A later drop could then
+remain undetected by those two branches. This candidate includes the missing
+runtime change from [Marlin PR #28695](https://github.com/MarlinFirmware/Marlin/pull/28695)
+(merged commit `c27424fa51053dd3b0febde2f03b287499403d39`): enter stable protection
+at the same hysteresis boundary. Watch periods and limits are unchanged.
+
+```
+python3 buildroot/tests/llm_thermal_paths_native.py
+```
+
+All 32 cases pass for extracted actual watch/runaway/error/disable/loud-kill
+paths with recording IO. The native build includes both hotend/bed protections,
+autotemp, idle-handler, screen-fault, beeper and nozzle-park branches. Assertions
+check targets, PWM and pin writes are zero before park or final kill; an unhomed
+machine does not park; repeated faults disable outputs again without repeating
+kill. Near-target hold/drop, initial heating stalls, timer wrap, idle timeout
+and normal heating are included. The 32-case harness is separate from the six
+watch-template cases and the eleven prompt cases.
+
+These are synthetic sensor/clock inputs, recording HAL/target/serial/screen/
+buzzer/park/planner/kill dependencies, and isolated actual source functions.
+They do not execute the full temperature task, ADC, interrupts, PID output,
+real motion/kill or physical heaters. No broader physical qualification follows
+from these results. The earlier 7569d4a layer requires this dependent correction
+before commissioning consideration; none has been flashed.
