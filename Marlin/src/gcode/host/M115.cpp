@@ -190,6 +190,7 @@ void GcodeSuite::M115() {
 
     // PROMPT SUPPORT (M876)
     cap_line(F("PROMPT_SUPPORT"), ENABLED(HOST_PROMPT_SUPPORT));
+    cap_line(F("LLM_MACHINE_STATE"), ENABLED(LLM_MACHINE_STATE));
 
     // SDCARD (M20, M23, M24, etc.)
     cap_line(F("SDCARD"), ENABLED(HAS_MEDIA));

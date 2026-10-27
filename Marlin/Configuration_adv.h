@@ -2879,6 +2879,8 @@
 #define EMERGENCY_PARSER
 // Experimental token prompt transport; enabled only by the explicit LLM build profile.
 //#define LLM_PROMPT_PROTOCOL
+// Optional read-only machine variables after a bound protocol inspect.
+//#define LLM_MACHINE_STATE
 
 /**
  * Realtime Reporting (requires EMERGENCY_PARSER)
