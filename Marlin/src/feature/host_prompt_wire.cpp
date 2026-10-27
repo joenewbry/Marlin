@@ -4,6 +4,10 @@
 #include "host_actions.h"
 #include "host_prompt_inbox.h"
 #include "../MarlinCore.h"
+#if ENABLED(LLM_MACHINE_STATE)
+  #include "host_machine_state.h"
+  #include <string.h>
+#endif
 
 volatile bool host_prompt_token_mode = false, host_prompt_protocol_busy = false;
 static HostPromptInbox inbox;
@@ -30,6 +34,42 @@ static void hex_value(const uint64_t value, const uint8_t digits) {
     SERIAL_CHAR(nibble < 10 ? '0' + nibble : 'a' + nibble - 10);
   }
 }
+
+#if ENABLED(LLM_MACHINE_STATE)
+static uint32_t machine_state_sequence = 0;
+static void state_values(const float *values, const uint8_t count) {
+  static_assert(sizeof(float) == sizeof(uint32_t), "State wire requires binary32 float");
+  for (uint8_t i = 0; i < count; ++i) {
+    uint32_t bits;
+    memcpy(&bits, values + i, sizeof(bits));
+    hex_value(bits, 8);
+  }
+}
+
+static void machine_state_receipt(const uint32_t request) {
+  if (!request || !host_prompt_identity.bound() || machine_state_sequence == UINT32_MAX) return;
+  const HostPromptSession session = host_prompt_identity.session();
+  const HostMachineState state = host_machine_state_snapshot();
+  ++machine_state_sequence; // Saturate rather than wrap an old observation ID.
+  PORT_REDIRECT(SerialMask::All);
+  SERIAL_ECHOPGM("//llmstate:v1 Q"); hex_value(request, 8);
+  SERIAL_ECHOPGM(" T"); hex_value(session.high, 16); hex_value(session.low, 16);
+  SERIAL_ECHOPGM(" N"); hex_value(machine_state_sequence, 8);
+  SERIAL_ECHOPGM(" U"); hex_value(state.uptime, 8);
+  SERIAL_ECHOPGM(" F"); hex_value(state.flags, 2);
+  SERIAL_ECHOPGM(" H"); hex_value(state.homed, 2);
+  SERIAL_ECHOPGM(" K"); hex_value(state.trusted, 2);
+  SERIAL_ECHOPGM(" E"); hex_value(state.enabled, 2);
+  SERIAL_ECHOPGM(" B"); hex_value(state.blocks, 2);
+  SERIAL_ECHOPGM(" R"); hex_value(state.relative, 2);
+  SERIAL_ECHOPGM(" A"); hex_value(state.tool, 2);
+  SERIAL_ECHOPGM(" P"); state_values(state.position, 4);
+  SERIAL_ECHOPGM(" O"); state_values(state.workspace, 3);
+  SERIAL_ECHOPGM(" D"); state_values(state.home, 3);
+  SERIAL_ECHOPGM(" V"); state_values(state.values, 9);
+  SERIAL_EOL();
+}
+#endif
 
 // Fixed-format receipt, separate from ordinary G-code ok. C00 is handler
 // acceptance only; the snapshot describes current prompt state, not motion.
@@ -76,6 +116,9 @@ void host_prompt_wire_process() {
   }
   if (command.kind == HostPromptCommandKind::Inspect) {
     receipt(command.request, 0);
+    #if ENABLED(LLM_MACHINE_STATE)
+      machine_state_receipt(command.request);
+    #endif
     return;
   }
   // One binding per boot. Do not let a delayed bind switch authority back to
