@@ -71,3 +71,22 @@ Review overview: https://robot.digitalsurfacelabs.com/pages/creality-for-llm/
 
 Originating session title was unavailable; session thread
 01a17442-1b53-7313-9ab2-b0ca21e2918b.
+
+## Heater watch parity backport
+
+This layer carries the earlier experiment's two HeaterWatch fixes onto v040:
+zero remains the disabled sentinel even when a deadline wraps, and watching
+continues until the runaway protection threshold takes over. Hotend, bed and
+chamber watch typedefs use their respective thermal-protection hysteresis.
+No configured watch periods or temperature limits are changed. The cooler
+specialization is untouched; no cooler qualification is claimed.
+
+```
+python3 buildroot/tests/llm_heater_watch_native.py
+```
+
+The original template fails the zero-deadline assertion. The corrected template
+passes six synthetic-clock scenarios and three actual typedef checks. These
+checks cover arming, expiry, wrap and handoff thresholds; full manager fault
+shutdown and physical heaters have not been qualified on this source baseline.
+The earlier Creality-native thermal results do not transfer automatically.
