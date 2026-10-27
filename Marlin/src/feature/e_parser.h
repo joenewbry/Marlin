@@ -37,7 +37,7 @@ public:
     EP_N,
     EP_M,
     EP_M1,
-    EP_M10, EP_M108,
+    EP_M10, EP_M108, EP_M108_TAIL,
     EP_M11, EP_M112,
     EP_M4, EP_M41, EP_M410,
     #if HAS_MEDIA
@@ -50,7 +50,7 @@ public:
       EP_M2, EP_M29, EP_M293, EP_M294,
     #endif
     #if ENABLED(HOST_PROMPT_SUPPORT)
-      EP_M8, EP_M87, EP_M876, EP_M876S, EP_M876SN,
+      EP_M8, EP_M87, EP_M876, EP_M876S, EP_M876SN, EP_M876_TAIL,
     #endif
     #if ENABLED(REALTIME_REPORTING_COMMANDS)
       EP_S, EP_S0, EP_S00, EP_GRBL_STATUS,

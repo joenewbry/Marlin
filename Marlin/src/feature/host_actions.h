@@ -25,6 +25,7 @@
 #include "../HAL/shared/Marduino.h"
 
 #if ENABLED(HOST_PROMPT_SUPPORT)
+  #include "host_prompt_identity.h"
 
   enum PromptReason : uint8_t {
     PROMPT_NOT_DEFINED,
@@ -95,7 +96,7 @@ class HostUI {
     public:
     static PromptReason host_prompt_reason;
 
-    static void handle_response(const uint8_t response);
+    static bool handle_response(const uint8_t response);
 
     static void notify_P(PGM_P const message);
     static void notify(FSTR_P const fmsg) { notify_P(FTOP(fmsg)); }
@@ -129,3 +130,17 @@ class HostUI {
 };
 
 extern HostUI hostui;
+
+#if ENABLED(HOST_PROMPT_SUPPORT)
+  extern HostPromptIdentity host_prompt_identity;
+  bool host_response_enqueue(uint8_t response);
+  void host_response_process();
+  void host_prompt_end_if_current(uint32_t generation);
+  HostPromptCheck host_token_response(HostPromptSession session, uint32_t prompt, uint8_t response);
+  uint8_t host_prompt_wire_reason();
+  #if ENABLED(LLM_PROMPT_PROTOCOL)
+    extern volatile bool host_prompt_token_mode, host_prompt_protocol_busy;
+    void host_prompt_receive_byte(uint8_t byte);
+    void host_prompt_wire_process();
+  #endif
+#endif

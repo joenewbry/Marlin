@@ -26,6 +26,10 @@
 
 #include "../../inc/MarlinConfig.h"
 #include "MarlinSerial.h"
+#if ENABLED(LLM_PROMPT_PROTOCOL)
+  #include "../../feature/host_actions.h"
+  #include "../../feature/host_prompt_rx_router.h"
+#endif
 
 #if ENABLED(EMERGENCY_PARSER)
   #include "../../feature/e_parser.h"
@@ -112,14 +116,20 @@ void MarlinSerial::begin(unsigned long baud, uint8_t config) {
     unsigned char c;
     if (uart_getc(obj, &c) == 0) {
 
-      rx_buffer_index_t i = (unsigned int)(obj->rx_head + 1) % SERIAL_RX_BUFFER_SIZE;
-
-      // If tail overlaps head the buffer is overflowed
-      // so don't write the character or advance the head.
-      if (i != obj->rx_tail) {
-        obj->rx_buff[obj->rx_head] = c;
-        obj->rx_head = i;
-      }
+      #if ENABLED(LLM_PROMPT_PROTOCOL)
+        const bool host_port = this == static_cast<MarlinSerial*>(&MSerial1);
+        if (host_port) host_prompt_receive_byte(c);
+      #endif
+      const auto store = [obj](const uint8_t byte) {
+        const rx_buffer_index_t i = (unsigned int)(obj->rx_head + 1) % SERIAL_RX_BUFFER_SIZE;
+        if (i != obj->rx_tail) { obj->rx_buff[obj->rx_head] = byte; obj->rx_head = i; }
+      };
+      #if ENABLED(LLM_PROMPT_PROTOCOL)
+        if (host_port) { static HostPromptRxRouter router; router.receive(c, store); }
+        else store(c);
+      #else
+        store(c);
+      #endif
 
       #if ENABLED(EMERGENCY_PARSER)
         emergency_parser.update(static_cast<MSerialT*>(this)->emergency_state, c);

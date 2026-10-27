@@ -1641,6 +1641,7 @@ void RTSSHOW::RTS_HandleData(void)
         temphot = 0;
         runout.reset();
         marlin.user_resume();
+        TERN_(HOST_PROMPT_SUPPORT, hostui.prompt_end());
         RTS_ShowPreviewImage(true);
         RTS_SDcard_Stop();
         queue.clear();
@@ -1796,6 +1797,7 @@ void RTSSHOW::RTS_HandleData(void)
           if(marlin.wait_for_user)
           {
             marlin.user_resume();
+            TERN_(HOST_PROMPT_SUPPORT, hostui.prompt_end());
           }
           else
         #endif
