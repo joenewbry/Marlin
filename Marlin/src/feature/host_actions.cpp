@@ -83,6 +83,38 @@ void HostUI::action(FSTR_P const fstr, const bool eol) {
 #if ENABLED(HOST_PROMPT_SUPPORT)
 
   PromptReason HostUI::host_prompt_reason = PROMPT_NOT_DEFINED;
+  HostPromptIdentity host_prompt_identity;
+  static volatile uint8_t pending_host_response = UINT8_MAX;
+  static volatile uint32_t pending_host_generation = 0;
+
+  // Emergency parser entry point: bounded mailbox only, no UI, planner, serial
+  // output or token-state mutation inside the receive/interrupt context.
+  bool host_response_enqueue(const uint8_t response) {
+    if (response == UINT8_MAX) return false;
+    bool accepted = false;
+    CRITICAL_SECTION_START();
+    if (pending_host_response == UINT8_MAX) {
+      pending_host_generation = host_prompt_identity.generation();
+      pending_host_response = response;
+      accepted = true;
+    }
+    CRITICAL_SECTION_END();
+    return accepted;
+  }
+
+  void host_response_process() {
+    CRITICAL_SECTION_START();
+    const uint8_t response = pending_host_response;
+    const uint32_t generation = pending_host_generation;
+    pending_host_response = UINT8_MAX;
+    CRITICAL_SECTION_END();
+    // Binding a token session disables legacy tokenless replies. Even in
+    // compatibility mode, never apply a queued reply to a replacement prompt.
+    if (response != UINT8_MAX && host_prompt_identity.legacy_accepts(generation))
+      hostui.handle_response(response);
+  }
+
+
 
   PGMSTR(CONTINUE_STR, "Continue");
   PGMSTR(DISMISS_STR, "Dismiss");
@@ -121,16 +153,26 @@ void HostUI::action(FSTR_P const fstr, const bool eol) {
   void HostUI::prompt_begin(const PromptReason reason, FSTR_P const fstr, const char extra_char/*='\0'*/) {
     prompt_end();
     host_prompt_reason = reason;
+    host_prompt_identity.begin();
     prompt_plus(F("begin"), fstr, extra_char);
   }
   void HostUI::prompt_begin(const PromptReason reason, const char * const cstr, const char extra_char/*='\0'*/) {
     prompt_end();
     host_prompt_reason = reason;
+    host_prompt_identity.begin();
     prompt_plus(F("begin"), cstr, extra_char);
   }
 
-  void HostUI::prompt_end() { prompt(F("end")); }
-  void HostUI::prompt_show() { prompt(F("show")); }
+  void HostUI::prompt_end() {
+    host_prompt_identity.end();
+    host_prompt_reason = PROMPT_NOT_DEFINED;
+    prompt(F("end"));
+  }
+  void host_prompt_end_if_current(const uint32_t generation) {
+    if (host_prompt_identity.active() && host_prompt_identity.generation() == generation)
+      hostui.prompt_end();
+  }
+  void HostUI::prompt_show() { host_prompt_identity.show(); prompt(F("show")); }
 
   void HostUI::_prompt_show(FSTR_P const btn1, FSTR_P const btn2) {
     if (btn1) prompt_button(btn1);
@@ -138,8 +180,8 @@ void HostUI::action(FSTR_P const fstr, const bool eol) {
     prompt_show();
   }
 
-  void HostUI::prompt_button(FSTR_P const fstr) { prompt_plus(F("button"), fstr); }
-  void HostUI::prompt_button(const char * const cstr) { prompt_plus(F("button"), cstr); }
+  void HostUI::prompt_button(FSTR_P const fstr) { host_prompt_identity.button(); prompt_plus(F("button"), fstr); }
+  void HostUI::prompt_button(const char * const cstr) { host_prompt_identity.button(); prompt_plus(F("button"), cstr); }
 
   void HostUI::prompt_do(const PromptReason reason, FSTR_P const fstr, FSTR_P const btn1/*=nullptr*/, FSTR_P const btn2/*=nullptr*/) {
     prompt_begin(reason, fstr);
@@ -162,7 +204,7 @@ void HostUI::action(FSTR_P const fstr, const bool eol) {
     void HostUI::filament_load_prompt() {
       const bool disable_to_continue = TERN0(HAS_FILAMENT_SENSOR, runout.filament_ran_out);
       prompt_do(PROMPT_FILAMENT_RUNOUT, F("Paused"), F("PurgeMore"),
-        disable_to_continue ? F("DisableRunout") : FPSTR(CONTINUE_STR)
+        disable_to_continue ? nullptr : FPSTR(CONTINUE_STR)
       );
     }
   #endif
@@ -174,9 +216,29 @@ void HostUI::action(FSTR_P const fstr, const bool eol) {
   //  - Resume Print response
   //  - Dismissal of info
   //
-  void HostUI::handle_response(const uint8_t response) {
+  bool HostUI::handle_response(const uint8_t response) {
     const PromptReason hpr = host_prompt_reason;
+    switch (hpr) {
+      case PROMPT_FILAMENT_RUNOUT:
+        if (response > 1) return false;
+        #if HAS_FILAMENT_SENSOR
+          if (response == 1 && runout.filament_ran_out) return false;
+        #endif
+        break;
+      case PROMPT_USER_CONTINUE:
+        #if HAS_FILAMENT_SENSOR
+          if (runout.filament_ran_out) return false;
+        #endif
+        if (response != 0) return false;
+        break;
+      case PROMPT_PAUSE_RESUME:
+      case PROMPT_INFO:
+        if (response != 0) return false;
+        break;
+      default: return false;
+    }
     host_prompt_reason = PROMPT_NOT_DEFINED;  // Reset now ahead of logic
+    host_prompt_identity.end();
     switch (hpr) {
       case PROMPT_FILAMENT_RUNOUT:
         switch (response) {
@@ -190,12 +252,6 @@ void HostUI::action(FSTR_P const fstr, const bool eol) {
           case 1: // "Continue" / "Disable Runout" button
             #if ENABLED(M600_PURGE_MORE_RESUMABLE)
               pause_menu_response = PAUSE_RESPONSE_RESUME_PRINT;  // Simulate menu selection
-            #endif
-            #if HAS_FILAMENT_SENSOR
-              if (runout.filament_ran_out) {                      // Disable a triggered sensor
-                runout.enabled = false;
-                runout.reset();
-              }
             #endif
             break;
         }
@@ -212,6 +268,30 @@ void HostUI::action(FSTR_P const fstr, const bool eol) {
       case PROMPT_INFO:
         break;
       default: break;
+    }
+    return true;
+  }
+
+  HostPromptCheck host_token_response(const HostPromptSession session, const uint32_t prompt, const uint8_t response) {
+    const HostPromptCheck checked = host_prompt_identity.check(session, prompt, response);
+    if (checked != HostPromptCheck::Ready) return checked;
+    #if HAS_FILAMENT_SENSOR
+      if (runout.filament_ran_out && (HostUI::host_prompt_reason == PROMPT_USER_CONTINUE
+          || (HostUI::host_prompt_reason == PROMPT_FILAMENT_RUNOUT && response == 1)))
+        return HostPromptCheck::PhysicalActionRequired;
+    #endif
+    return hostui.handle_response(response) ? HostPromptCheck::Ready : HostPromptCheck::UnsupportedReason;
+  }
+
+  // Keep wire-v1 reason IDs stable despite the newer internal enum's reheat entry.
+  uint8_t host_prompt_wire_reason() {
+    switch (HostUI::host_prompt_reason) {
+      case PROMPT_NOT_DEFINED: return 0;
+      case PROMPT_FILAMENT_RUNOUT: return 1;
+      case PROMPT_USER_CONTINUE: return 2;
+      case PROMPT_PAUSE_RESUME: return 3;
+      case PROMPT_INFO: return 4;
+      default: return 0xFF; // Unsupported, including the new runout-reheat reason.
     }
   }
 

@@ -312,12 +312,16 @@ PGMSTR(M112_KILL_STR, "M112 Shutdown");
 
   void Marlin::wait_for_user_response(millis_t ms/*=0*/, const bool no_sleep/*=false*/) {
     UNUSED(no_sleep);
+    #if ENABLED(HOST_PROMPT_SUPPORT)
+      const uint32_t prompt_generation = host_prompt_identity.generation();
+    #endif
     KEEPALIVE_STATE(PAUSED_FOR_USER);
     wait_start();
     if (ms) ms += millis(); // expire time
     while (wait_for_user && !(ms && ELAPSED(millis(), ms)))
       idle(TERN_(ADVANCED_PAUSE_FEATURE, no_sleep));
     user_resume();
+    TERN_(HOST_PROMPT_SUPPORT, host_prompt_end_if_current(prompt_generation));
     while (ui.button_pressed()) safe_delay(50);
   }
 
@@ -844,6 +848,9 @@ void Marlin::idle(const bool no_stepper_sleep/*=false*/) {
 
   // Manage Heaters (and Watchdog)
   thermalManager.task();
+  // IRQ receives bytes only; prompt actions and receipts run here, also in waits.
+  TERN_(LLM_PROMPT_PROTOCOL, host_prompt_wire_process());
+  TERN_(HOST_PROMPT_SUPPORT, host_response_process());
 
   // Max7219 heartbeat, animation, etc
   TERN_(MAX7219_DEBUG, max7219.idle_tasks());

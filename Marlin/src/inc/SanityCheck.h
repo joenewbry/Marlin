@@ -4862,3 +4862,12 @@ static_assert(WITHIN(MULTISTEPPING_LIMIT, 1, 128) && IS_POWER_OF_2(MULTISTEPPING
 #undef _TEST_PWM
 #undef _NUM_AXES_STR
 #undef _LOGICAL_AXES_STR
+
+#if ENABLED(LLM_PROMPT_PROTOCOL)
+  #if !ALL(HOST_ACTION_COMMANDS, HOST_PROMPT_SUPPORT, EMERGENCY_PARSER)
+    #error "LLM prompt protocol requires host actions, prompts and emergency parser."
+  #endif
+  #if !defined(HAL_STM32) || SERIAL_PORT != 1 || ENABLED(SERIAL_DMA)
+    #error "LLM prompt protocol is qualified only for non-DMA STM32 host UART1."
+  #endif
+#endif

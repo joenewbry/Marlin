@@ -35,7 +35,10 @@
  */
 void GcodeSuite::M876() {
 
-  if (parser.seenval('S')) hostui.handle_response((uint8_t)parser.value_byte());
+  // With the emergency parser, the guarded mailbox owns legacy replies too.
+  #if DISABLED(EMERGENCY_PARSER)
+    if (parser.seenval('S')) hostui.handle_response((uint8_t)parser.value_byte());
+  #endif
 
 }
 

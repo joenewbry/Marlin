@@ -225,6 +225,7 @@ bool load_filament(const float slow_load_length/*=0*/, const float fast_load_len
         marlin.user_resume();
       marlin.idle_no_sleep();
     }
+    TERN_(HOST_PROMPT_SUPPORT, hostui.prompt_end());
   }
 
   if (show_lcd) ui.pause_show_message(PAUSE_MESSAGE_LOAD, mode);
@@ -651,6 +652,7 @@ void wait_for_confirmation(const bool is_reload/*=false*/, const int8_t max_beep
       marlin.idle_no_sleep();
     #endif
   }
+  TERN_(HOST_PROMPT_SUPPORT, hostui.prompt_end());
   TERN_(DUAL_X_CARRIAGE, motion.set_extruder_duplication(saved_ext_dup_mode, saved_ext));
 }
 

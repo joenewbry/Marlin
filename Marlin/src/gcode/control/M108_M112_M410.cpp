@@ -23,11 +23,18 @@
 #include "../../inc/MarlinConfig.h"
 #include "../gcode.h"
 #include "../../module/motion.h" // for quickstop_stepper
+#if ENABLED(LLM_PROMPT_PROTOCOL)
+  #include "../../feature/host_actions.h"
+#endif
 
 /**
  * M108: Stop the waiting for heaters in M109, M190, M303. Does not affect the target temperature.
  */
 void GcodeSuite::M108() {
+  // The ordinary dispatcher must enforce the same authority as the IRQ parser.
+  #if ENABLED(LLM_PROMPT_PROTOCOL)
+    if (host_prompt_token_mode || host_prompt_protocol_busy) return;
+  #endif
   marlin.end_waiting();
 }
 
