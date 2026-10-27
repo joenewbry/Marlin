@@ -52,7 +52,7 @@ static void machine_state_receipt(const uint32_t request) {
   const HostMachineState state = host_machine_state_snapshot();
   ++machine_state_sequence; // Saturate rather than wrap an old observation ID.
   PORT_REDIRECT(SerialMask::All);
-  SERIAL_ECHOPGM("//llmstate:v1 Q"); hex_value(request, 8);
+  SERIAL_ECHOPGM("//llmstate:v2 Q"); hex_value(request, 8);
   SERIAL_ECHOPGM(" T"); hex_value(session.high, 16); hex_value(session.low, 16);
   SERIAL_ECHOPGM(" N"); hex_value(machine_state_sequence, 8);
   SERIAL_ECHOPGM(" U"); hex_value(state.uptime, 8);
@@ -67,6 +67,10 @@ static void machine_state_receipt(const uint32_t request) {
   SERIAL_ECHOPGM(" O"); state_values(state.workspace, 3);
   SERIAL_ECHOPGM(" D"); state_values(state.home, 3);
   SERIAL_ECHOPGM(" V"); state_values(state.values, 9);
+  SERIAL_ECHOPGM(" I");
+  for (uint8_t i = 0; i < 3; ++i) hex_value(state.inactivity[i], 8);
+  SERIAL_ECHOPGM(" C"); hex_value(state.idle_axes, 2);
+  SERIAL_ECHOPGM(" J"); hex_value(state.timeout_flags, 2);
   SERIAL_EOL();
 }
 #endif

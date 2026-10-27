@@ -20,6 +20,17 @@ HostMachineState host_machine_state_snapshot() {
   // planner synchronization, idle(), settings write or hardware action here.
   CRITICAL_SECTION_START();
   state.uptime = millis();
+  state.inactivity[0] = gcode.previous_move_ms;
+  state.inactivity[2] = gcode.max_inactive_time;
+  #if HAS_DISABLE_IDLE_AXES
+    state.inactivity[1] = gcode.stepper_inactive_time;
+    state.idle_axes = (TERN0(DISABLE_IDLE_X, true) ? 1 : 0)
+      | (TERN0(DISABLE_IDLE_Y, true) ? 2 : 0)
+      | (TERN0(DISABLE_IDLE_Z, true) ? 4 : 0)
+      | (TERN0(DISABLE_IDLE_E, true) ? 8 : 0);
+    if (gcode.stepper_inactive_timeout(state.uptime)) state.timeout_flags |= 1;
+  #endif
+  if (gcode.stepper_max_timed_out(state.uptime)) state.timeout_flags |= 2;
   state.flags = (marlin.isRunning() ? 1 : 0)
     | (TERN0(HAS_RESUME_CONTINUE, marlin.wait_for_user) ? 2 : 0)
     | (marlin.wait_for_heatup ? 4 : 0) | (planner.leveling_active ? 8 : 0);
